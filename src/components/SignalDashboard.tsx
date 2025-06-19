@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, TrendingUp, TrendingDown, Clock, DollarSign, History } from "lucide-react";
+import { RefreshCw, TrendingUp, TrendingDown, Clock, DollarSign, History, AlertTriangle } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import SignalCard from "./SignalCard";
 import TradingHistory from "./TradingHistory";
@@ -27,6 +27,7 @@ const SignalDashboard = () => {
   const [signals, setSignals] = useState<Signal[]>([]);
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [activeTrades, setActiveTrades] = useState(tradingManager.getActiveTrades());
   const [modal] = useState(200000); // Fixed modal 200k IDR
 
   const generateNewSignals = async () => {
@@ -50,32 +51,74 @@ const SignalDashboard = () => {
   };
 
   const handleStartTrade = (signal: Signal) => {
-    const timeframe = '15m'; // Fixed timeframe
+    const timeframe = '15m';
     tradingManager.addTrade(signal, modal, timeframe);
+    
+    // Update active trades state
+    setActiveTrades(tradingManager.getActiveTrades());
     
     // Remove signal from active list
     setSignals(prev => prev.filter(s => s.id !== signal.id));
   };
 
+  // Auto-generate signals setiap 2 menit jika tidak ada sinyal aktif
   useEffect(() => {
-    generateNewSignals();
-    
+    const autoGenerateSignals = () => {
+      if (signals.length === 0 && !isLoading) {
+        generateNewSignals();
+      }
+    };
+
+    // Generate initial signals
+    autoGenerateSignals();
+
+    // Set interval untuk auto-generate
+    const interval = setInterval(autoGenerateSignals, 120000); // 2 menit
+
+    return () => clearInterval(interval);
+  }, [signals.length, isLoading]);
+
+  useEffect(() => {
     // Setup history listener
     const unsubscribe = tradingManager.onHistoryUpdate((newHistory) => {
       setHistory(newHistory);
+      // Update active trades ketika ada perubahan
+      setActiveTrades(tradingManager.getActiveTrades());
     });
 
-    return unsubscribe;
-  }, []);
+    // Update active trades periodically
+    const tradesInterval = setInterval(() => {
+      setActiveTrades(tradingManager.getActiveTrades());
+    }, 1000);
 
-  const activeTrades = tradingManager.getActiveTrades();
+    return () => {
+      unsubscribe();
+      clearInterval(tradesInterval);
+    };
+  }, []);
 
   return (
     <div className="space-y-6">
+      {/* Disclaimer Warning */}
+      <Card className="bg-yellow-500/10 border-yellow-500/50">
+        <CardContent className="p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-yellow-500 mt-0.5 flex-shrink-0" />
+            <div>
+              <h4 className="text-yellow-400 font-semibold mb-1">⚠️ PERINGATAN: INI ADALAH SIMULASI</h4>
+              <p className="text-yellow-300 text-sm">
+                Dashboard ini menggunakan data simulasi, bukan data Binance nyata. Gunakan hanya untuk referensi dan pembelajaran. 
+                Selalu lakukan analisis sendiri sebelum trading di Binance yang sebenarnya.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Tabs defaultValue="signals" className="w-full">
         <TabsList className="grid w-full grid-cols-2 bg-slate-800/50">
           <TabsTrigger value="signals" className="data-[state=active]:bg-blue-600">
-            Sinyal Aktif
+            Sinyal Aktif ({signals.length})
           </TabsTrigger>
           <TabsTrigger value="history" className="data-[state=active]:bg-blue-600">
             <History className="w-4 h-4 mr-2" />
@@ -87,9 +130,9 @@ const SignalDashboard = () => {
           {/* Dashboard Header */}
           <div className="flex justify-between items-center">
             <div>
-              <h3 className="text-2xl font-bold text-white">Sinyal Ideal untuk Modal Kecil</h3>
+              <h3 className="text-2xl font-bold text-white">Sinyal Trading Otomatis</h3>
               <p className="text-gray-400">
-                Modal: Rp 200.000 • Timeframe: 15 menit • Risk/Reward: 1:2
+                Modal: Rp 200.000 • Timeframe: 15 menit • Auto-refresh setiap 2 menit
               </p>
             </div>
             <Button
@@ -98,7 +141,7 @@ const SignalDashboard = () => {
               className="bg-blue-600 hover:bg-blue-700 text-white"
             >
               <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              {isLoading ? 'Mencari Sinyal...' : 'Refresh Sinyal'}
+              {isLoading ? 'Mencari Sinyal...' : 'Refresh Manual'}
             </Button>
           </div>
 
@@ -144,8 +187,8 @@ const SignalDashboard = () => {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-purple-400 text-sm font-medium">Timeframe</p>
-                    <p className="text-xl font-bold text-white">15 Menit</p>
+                    <p className="text-purple-400 text-sm font-medium">Status</p>
+                    <p className="text-xl font-bold text-white">Auto</p>
                   </div>
                   <Clock className="w-6 h-6 text-purple-400" />
                 </div>
@@ -153,25 +196,35 @@ const SignalDashboard = () => {
             </Card>
           </div>
 
-          {/* Active Trades */}
+          {/* Active Trades - Selalu ditampilkan jika ada */}
           {activeTrades.length > 0 && (
             <div className="space-y-4">
-              <h4 className="text-lg font-semibold text-white">Trade Sedang Berjalan</h4>
+              <h4 className="text-lg font-semibold text-white flex items-center gap-2">
+                <Clock className="w-5 h-5 text-yellow-400" />
+                Trade Sedang Berjalan ({activeTrades.length})
+              </h4>
               <div className="grid gap-4">
                 {activeTrades.map((trade) => (
                   <Card key={trade.id} className="bg-yellow-500/10 border-yellow-500/20">
                     <CardContent className="p-4">
                       <div className="flex justify-between items-center">
                         <div>
-                          <h5 className="text-white font-bold">{trade.signal.pair}</h5>
-                          <p className="text-yellow-400">
-                            {trade.signal.type} • Entry: ${trade.signal.entryPrice} • Modal: Rp {trade.modal.toLocaleString('id-ID')}
-                          </p>
+                          <h5 className="text-white font-bold text-lg">{trade.signal.pair}</h5>
+                          <div className="flex items-center gap-3 mt-1">
+                            <Badge className={trade.signal.type === 'BUY' ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}>
+                              {trade.signal.type}
+                            </Badge>
+                            <span className="text-yellow-400">Entry: ${trade.signal.entryPrice}</span>
+                            <span className="text-gray-400">Modal: Rp {trade.modal.toLocaleString('id-ID')}</span>
+                          </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-yellow-400 text-sm">Sedang Berjalan...</p>
+                          <p className="text-yellow-400 font-semibold">🔴 LIVE TRADING</p>
+                          <p className="text-gray-400 text-sm">
+                            Dimulai: {trade.startTime.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta' })} WIB
+                          </p>
                           <p className="text-gray-400 text-xs">
-                            Dimulai: {trade.startTime.toLocaleTimeString('id-ID')} WIB
+                            Target: ${trade.signal.targetPrice} | SL: ${trade.signal.stopLoss}
                           </p>
                         </div>
                       </div>
@@ -201,22 +254,34 @@ const SignalDashboard = () => {
               ))}
             </div>
           ) : signals.length > 0 ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {signals.map((signal) => (
-                <SignalCard 
-                  key={signal.id} 
-                  signal={signal} 
-                  modal={modal}
-                  onStartTrade={handleStartTrade}
-                />
-              ))}
+            <div className="space-y-4">
+              <h4 className="text-lg font-semibold text-white flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-green-400" />
+                Sinyal Siap Trading
+              </h4>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {signals.map((signal) => (
+                  <SignalCard 
+                    key={signal.id} 
+                    signal={signal} 
+                    modal={modal}
+                    onStartTrade={handleStartTrade}
+                  />
+                ))}
+              </div>
             </div>
           ) : (
             <Card className="bg-slate-800/50 border-slate-700">
               <CardContent className="p-12 text-center">
-                <p className="text-gray-400 text-lg">
-                  Tidak ada sinyal ideal tersedia. Klik "Refresh Sinyal" untuk mencari peluang trading terbaru.
-                </p>
+                <div className="space-y-4">
+                  <Clock className="w-12 h-12 text-gray-400 mx-auto animate-pulse" />
+                  <div>
+                    <p className="text-gray-400 text-lg font-medium">Mencari Sinyal Trading Ideal...</p>
+                    <p className="text-gray-500 text-sm mt-2">
+                      Sistem akan otomatis menghasilkan sinyal baru setiap 2 menit
+                    </p>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           )}
