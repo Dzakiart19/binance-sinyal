@@ -11,7 +11,7 @@ export interface ActiveTrade {
 }
 
 class TradingManager {
-  private activetrades: ActiveTrade[] = [];
+  private activeTrades: ActiveTrade[] = [];
   private history: HistoryRecord[] = [];
   private listeners: ((history: HistoryRecord[]) => void)[] = [];
 
@@ -24,7 +24,7 @@ class TradingManager {
       timeframe
     };
     
-    this.activetrades.push(trade);
+    this.activeTrades.push(trade);
     
     // Simulasi trade selesai setelah 5-30 menit
     const duration = 5 + Math.random() * 25; // 5-30 menit
@@ -34,10 +34,10 @@ class TradingManager {
   }
 
   private completeTrade(tradeId: string) {
-    const tradeIndex = this.activetrades.findIndex(t => t.id === tradeId);
+    const tradeIndex = this.activeTrades.findIndex(t => t.id === tradeId);
     if (tradeIndex === -1) return;
 
-    const trade = this.activetrades[tradeIndex];
+    const trade = this.activeTrades[tradeIndex];
     const { signal, modal, startTime, timeframe } = trade;
 
     // Simulasi hasil trading berdasarkan probabilitas
@@ -98,7 +98,7 @@ class TradingManager {
     };
 
     this.history.unshift(record); // Add to beginning
-    this.activetrades.splice(tradeIndex, 1);
+    this.activeTrades.splice(tradeIndex, 1);
     
     // Notify listeners
     this.listeners.forEach(listener => listener(this.history));
