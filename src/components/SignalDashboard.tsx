@@ -1,13 +1,12 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, TrendingUp, TrendingDown, Clock, DollarSign, History, AlertTriangle } from "lucide-react";
+import { RefreshCw, TrendingUp, TrendingDown, Clock, DollarSign, History, AlertTriangle, Zap, Globe } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import SignalCard from "./SignalCard";
 import TradingHistory from "./TradingHistory";
-import { generateIdealSignal } from "@/utils/signalGenerator";
+import { generateRealSignal } from "@/utils/realSignalGenerator";
 import { tradingManager } from "@/utils/tradingManager";
 import { HistoryRecord } from "./TradingHistory";
 
@@ -28,23 +27,28 @@ const SignalDashboard = () => {
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [activeTrades, setActiveTrades] = useState(tradingManager.getActiveTrades());
-  const [modal] = useState(200000); // Fixed modal 200k IDR
+  const [modal] = useState(200000);
+  const [isRealMode, setIsRealMode] = useState(true);
 
-  const generateNewSignals = async () => {
+  const generateNewRealSignals = async () => {
     setIsLoading(true);
     try {
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      console.log('🔄 Mencari sinyal real dari Binance + Groq AI...');
       
-      // Generate maksimal 2 sinyal ideal untuk modal kecil
-      const newSignals = [
-        generateIdealSignal(modal),
-        generateIdealSignal(modal)
-      ];
+      // Generate 1-2 real signals
+      const realSignal = await generateRealSignal();
       
-      setSignals(newSignals);
+      if (realSignal) {
+        setSignals([realSignal]);
+        console.log(`✅ Signal real berhasil: ${realSignal.pair} ${realSignal.type}`);
+      } else {
+        console.log('⚠️ Tidak ada signal optimal saat ini, coba lagi dalam beberapa menit');
+        setSignals([]);
+      }
+      
     } catch (error) {
-      console.error('Error generating signals:', error);
+      console.error('Error generating real signals:', error);
+      setSignals([]);
     } finally {
       setIsLoading(false);
     }
@@ -53,13 +57,30 @@ const SignalDashboard = () => {
   const handleStartTrade = (signal: Signal) => {
     const timeframe = '15m';
     tradingManager.addTrade(signal, modal, timeframe);
-    
-    // Update active trades state
     setActiveTrades(tradingManager.getActiveTrades());
-    
-    // Remove signal from active list
     setSignals(prev => prev.filter(s => s.id !== signal.id));
+    
+    console.log(`🚀 Trade dimulai: ${signal.pair} ${signal.type} - siap untuk eksekusi manual di Binance!`);
   };
+
+  // Auto-generate real signals setiap 3 menit
+  useEffect(() => {
+    const autoGenerateSignals = () => {
+      if (signals.length === 0 && !isLoading && isRealMode) {
+        generateNewRealSignals();
+      }
+    };
+
+    // Generate initial signals
+    if (isRealMode) {
+      generateNewRealSignals();
+    }
+
+    // Set interval untuk auto-generate
+    const interval = setInterval(autoGenerateSignals, 180000); // 3 menit
+
+    return () => clearInterval(interval);
+  }, [signals.length, isLoading, isRealMode]);
 
   // Auto-generate signals setiap 2 menit jika tidak ada sinyal aktif
   useEffect(() => {
@@ -99,16 +120,16 @@ const SignalDashboard = () => {
 
   return (
     <div className="space-y-6">
-      {/* Disclaimer Warning */}
-      <Card className="bg-yellow-500/10 border-yellow-500/50">
+      {/* Real Data Disclaimer */}
+      <Card className="bg-green-500/10 border-green-500/50">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-yellow-500 mt-0.5 flex-shrink-0" />
+            <Globe className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
             <div>
-              <h4 className="text-yellow-400 font-semibold mb-1">⚠️ PERINGATAN: INI ADALAH SIMULASI</h4>
-              <p className="text-yellow-300 text-sm">
-                Dashboard ini menggunakan data simulasi, bukan data Binance nyata. Gunakan hanya untuk referensi dan pembelajaran. 
-                Selalu lakukan analisis sendiri sebelum trading di Binance yang sebenarnya.
+              <h4 className="text-green-400 font-semibold mb-1">🌐 REAL MARKET DATA ACTIVE</h4>
+              <p className="text-green-300 text-sm">
+                Menggunakan data real-time dari Binance API, analisis AI dari Groq, dan chart visualization real. 
+                Sinyal ini untuk eksekusi manual di Binance App. <strong>Selalu DYOR!</strong>
               </p>
             </div>
           </div>
@@ -117,8 +138,9 @@ const SignalDashboard = () => {
 
       <Tabs defaultValue="signals" className="w-full">
         <TabsList className="grid w-full grid-cols-2 bg-slate-800/50">
-          <TabsTrigger value="signals" className="data-[state=active]:bg-blue-600">
-            Sinyal Aktif ({signals.length})
+          <TabsTrigger value="signals" className="data-[state=active]:bg-green-600">
+            <Zap className="w-4 h-4 mr-2" />
+            Real Signals ({signals.length})
           </TabsTrigger>
           <TabsTrigger value="history" className="data-[state=active]:bg-blue-600">
             <History className="w-4 h-4 mr-2" />
@@ -130,43 +152,46 @@ const SignalDashboard = () => {
           {/* Dashboard Header */}
           <div className="flex justify-between items-center">
             <div>
-              <h3 className="text-2xl font-bold text-white">Sinyal Trading Otomatis</h3>
+              <h3 className="text-2xl font-bold text-white flex items-center gap-2">
+                <Globe className="w-6 h-6 text-green-400" />
+                Real Trading Signals
+              </h3>
               <p className="text-gray-400">
-                Modal: Rp 200.000 • Timeframe: 15 menit • Auto-refresh setiap 2 menit
+                Modal: Rp 200.000 • Real Binance Data • AI Analysis • Manual Execute
               </p>
             </div>
             <Button
-              onClick={generateNewSignals}
+              onClick={generateNewRealSignals}
               disabled={isLoading}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
+              className="bg-green-600 hover:bg-green-700 text-white"
             >
               <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              {isLoading ? 'Mencari Sinyal...' : 'Refresh Manual'}
+              {isLoading ? 'Analyzing Market...' : 'Refresh Real Data'}
             </Button>
           </div>
 
           {/* Trading Stats */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Card className="bg-blue-500/10 border-blue-500/20">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-blue-400 text-sm font-medium">Modal Trading</p>
-                    <p className="text-xl font-bold text-white">Rp 200.000</p>
-                  </div>
-                  <DollarSign className="w-6 h-6 text-blue-400" />
-                </div>
-              </CardContent>
-            </Card>
-
             <Card className="bg-green-500/10 border-green-500/20">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-green-400 text-sm font-medium">Sinyal Tersedia</p>
-                    <p className="text-xl font-bold text-white">{signals.length}</p>
+                    <p className="text-green-400 text-sm font-medium">Data Source</p>
+                    <p className="text-xl font-bold text-white">Real Binance</p>
                   </div>
-                  <TrendingUp className="w-6 h-6 text-green-400" />
+                  <Globe className="w-6 h-6 text-green-400" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-blue-500/10 border-blue-500/20">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-blue-400 text-sm font-medium">AI Analysis</p>
+                    <p className="text-xl font-bold text-white">Groq Active</p>
+                  </div>
+                  <Zap className="w-6 h-6 text-blue-400" />
                 </div>
               </CardContent>
             </Card>
@@ -175,10 +200,10 @@ const SignalDashboard = () => {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-yellow-400 text-sm font-medium">Trade Aktif</p>
-                    <p className="text-xl font-bold text-white">{activeTrades.length}</p>
+                    <p className="text-yellow-400 text-sm font-medium">Active Signals</p>
+                    <p className="text-xl font-bold text-white">{signals.length}</p>
                   </div>
-                  <Clock className="w-6 h-6 text-yellow-400" />
+                  <TrendingUp className="w-6 h-6 text-yellow-400" />
                 </div>
               </CardContent>
             </Card>
@@ -187,8 +212,8 @@ const SignalDashboard = () => {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-purple-400 text-sm font-medium">Status</p>
-                    <p className="text-xl font-bold text-white">Auto</p>
+                    <p className="text-purple-400 text-sm font-medium">Manual Execute</p>
+                    <p className="text-xl font-bold text-white">Ready</p>
                   </div>
                   <Clock className="w-6 h-6 text-purple-400" />
                 </div>
@@ -235,29 +260,30 @@ const SignalDashboard = () => {
             </div>
           )}
 
-          {/* Signals Grid */}
+          {/* Real Signals Grid */}
           {isLoading ? (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {[...Array(2)].map((_, index) => (
-                <Card key={index} className="bg-slate-800/50 border-slate-700 animate-pulse">
-                  <CardContent className="p-6">
-                    <div className="space-y-4">
-                      <div className="h-4 bg-slate-700 rounded w-1/3"></div>
-                      <div className="h-32 bg-slate-700 rounded"></div>
-                      <div className="space-y-2">
-                        <div className="h-3 bg-slate-700 rounded w-full"></div>
-                        <div className="h-3 bg-slate-700 rounded w-2/3"></div>
-                      </div>
+              <Card className="bg-slate-800/50 border-slate-700 animate-pulse">
+                <CardContent className="p-6">
+                  <div className="space-y-4">
+                    <div className="h-4 bg-slate-700 rounded w-1/3"></div>
+                    <div className="h-32 bg-slate-700 rounded"></div>
+                    <div className="space-y-2">
+                      <div className="h-3 bg-slate-700 rounded w-full"></div>
+                      <div className="h-3 bg-slate-700 rounded w-2/3"></div>
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    <div className="text-center text-green-400 text-sm">
+                      🔄 Analyzing Binance + Groq AI...
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           ) : signals.length > 0 ? (
             <div className="space-y-4">
               <h4 className="text-lg font-semibold text-white flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-green-400" />
-                Sinyal Siap Trading
+                <Zap className="w-5 h-5 text-green-400" />
+                Real Market Signals - Ready for Manual Execute
               </h4>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {signals.map((signal) => (
@@ -274,11 +300,11 @@ const SignalDashboard = () => {
             <Card className="bg-slate-800/50 border-slate-700">
               <CardContent className="p-12 text-center">
                 <div className="space-y-4">
-                  <Clock className="w-12 h-12 text-gray-400 mx-auto animate-pulse" />
+                  <Globe className="w-12 h-12 text-green-400 mx-auto animate-pulse" />
                   <div>
-                    <p className="text-gray-400 text-lg font-medium">Mencari Sinyal Trading Ideal...</p>
+                    <p className="text-gray-400 text-lg font-medium">Scanning Real Market Data...</p>
                     <p className="text-gray-500 text-sm mt-2">
-                      Sistem akan otomatis menghasilkan sinyal baru setiap 2 menit
+                      Sistem sedang menganalisis Binance + Groq AI untuk sinyal optimal
                     </p>
                   </div>
                 </div>
