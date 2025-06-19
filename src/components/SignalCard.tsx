@@ -2,14 +2,17 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Clock, Target, Shield, DollarSign } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Clock, Target, Shield, DollarSign, TrendingUp, Play } from "lucide-react";
 import { Signal } from "./SignalDashboard";
 
 interface SignalCardProps {
   signal: Signal;
+  modal?: number;
+  onStartTrade?: (signal: Signal) => void;
 }
 
-const SignalCard: React.FC<SignalCardProps> = ({ signal }) => {
+const SignalCard: React.FC<SignalCardProps> = ({ signal, modal = 200000, onStartTrade }) => {
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -17,6 +20,14 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal }) => {
       minimumFractionDigits: 2,
       maximumFractionDigits: 8,
     }).format(price);
+  };
+
+  const formatIDR = (amount: number) => {
+    return new Intl.NumberFormat('id-ID', {
+      style: 'currency',
+      currency: 'IDR',
+      minimumFractionDigits: 0,
+    }).format(amount);
   };
 
   const formatTime = (date: Date) => {
@@ -40,6 +51,24 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal }) => {
     return potential.toFixed(2);
   };
 
+  const calculateProfitIDR = () => {
+    const potentialPercent = parseFloat(calculateProfitPotential());
+    return (modal * potentialPercent) / 100;
+  };
+
+  const calculateRiskReward = () => {
+    const profitDistance = signal.type === 'BUY' 
+      ? signal.targetPrice - signal.entryPrice
+      : signal.entryPrice - signal.targetPrice;
+    
+    const lossDistance = signal.type === 'BUY'
+      ? signal.entryPrice - signal.stopLoss
+      : signal.stopLoss - signal.entryPrice;
+    
+    const ratio = profitDistance / lossDistance;
+    return ratio.toFixed(1);
+  };
+
   return (
     <Card className="bg-slate-800/50 border-slate-700 hover:border-slate-600 transition-all duration-300 hover:scale-[1.02]">
       <CardHeader className="pb-4">
@@ -52,6 +81,9 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal }) => {
               <Badge className={getSignalColor(signal.type)}>
                 {signal.type}
               </Badge>
+              <Badge variant="outline" className="text-gray-300">
+                15m
+              </Badge>
               <div className="flex items-center text-gray-400 text-sm">
                 <Clock className="w-4 h-4 mr-1" />
                 {formatTime(signal.timestamp)}
@@ -59,28 +91,43 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal }) => {
             </div>
           </div>
           <div className="text-right">
-            <p className="text-gray-400 text-xs">Potensi Profit</p>
-            <p className="text-green-400 font-bold text-lg">
-              +{calculateProfitPotential()}%
+            <p className="text-gray-400 text-xs">Risk/Reward</p>
+            <p className="text-blue-400 font-bold text-lg">
+              1:{calculateRiskReward()}
             </p>
           </div>
         </div>
       </CardHeader>
 
       <CardContent className="space-y-6">
-        {/* Chart Image */}
+        {/* Chart Image with better fallback */}
         <div className="relative">
-          <img
-            src={signal.chartUrl}
-            alt={`${signal.pair} Chart`}
-            className="w-full h-40 object-cover rounded-lg bg-slate-700"
-            onError={(e) => {
-              const target = e.target as HTMLImageElement;
-              target.src = "data:image/svg+xml,%3csvg width='100' height='100' xmlns='http://www.w3.org/2000/svg'%3e%3crect width='100' height='100' fill='%23374151'/%3e%3ctext x='50' y='50' font-family='Arial' font-size='12' fill='%239CA3AF' text-anchor='middle' dy='.3em'%3eChart Loading...%3c/text%3e%3c/svg%3e";
-            }}
-          />
+          <div className="w-full h-40 bg-slate-700 rounded-lg flex items-center justify-center">
+            <div className="text-center">
+              <TrendingUp className={`w-8 h-8 mx-auto mb-2 ${signal.type === 'BUY' ? 'text-green-400' : 'text-red-400'}`} />
+              <p className="text-gray-400 text-sm">Chart Pattern: {signal.type === 'BUY' ? 'Bullish Setup' : 'Bearish Setup'}</p>
+              <p className="text-gray-500 text-xs">15m Timeframe</p>
+            </div>
+          </div>
           <div className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded">
-            Live Chart
+            Live Analysis
+          </div>
+        </div>
+
+        {/* Modal & Profit Information */}
+        <div className="bg-blue-500/10 rounded-lg p-4">
+          <h4 className="text-blue-400 font-semibold text-sm mb-3">Proyeksi dengan Modal {formatIDR(modal)}</h4>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-gray-400 text-xs">Potensi Profit</p>
+              <p className="text-green-400 font-bold">+{formatIDR(calculateProfitIDR())}</p>
+              <p className="text-green-400 text-sm">+{calculateProfitPotential()}%</p>
+            </div>
+            <div>
+              <p className="text-gray-400 text-xs">Max Risk</p>
+              <p className="text-red-400 font-bold">-{formatIDR(Math.abs(calculateProfitIDR() / parseFloat(calculateRiskReward())))}</p>
+              <p className="text-red-400 text-sm">-{(parseFloat(calculateProfitPotential()) / parseFloat(calculateRiskReward())).toFixed(2)}%</p>
+            </div>
           </div>
         </div>
 
@@ -127,6 +174,17 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal }) => {
             {signal.analysis}
           </p>
         </div>
+
+        {/* Action Button */}
+        {onStartTrade && (
+          <Button 
+            onClick={() => onStartTrade(signal)}
+            className="w-full bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white font-semibold py-3"
+          >
+            <Play className="w-4 h-4 mr-2" />
+            Mulai Trading dengan {formatIDR(modal)}
+          </Button>
+        )}
       </CardContent>
     </Card>
   );
