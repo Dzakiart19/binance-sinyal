@@ -86,7 +86,7 @@ const SignalDashboard = () => {
   useEffect(() => {
     const autoGenerateSignals = () => {
       if (signals.length === 0 && !isLoading) {
-        generateNewSignals();
+        generateNewRealSignals();
       }
     };
 

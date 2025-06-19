@@ -13,16 +13,14 @@ export const generateRealChart = async (
       symbol: symbol.toLowerCase(),
       interval: interval,
       theme: 'dark',
-      width: 800,
-      height: 400,
-      indicators: ['sma_20', 'sma_50', 'rsi'],
-      signal: signalType.toLowerCase()
+      width: '800',
+      height: '400',
+      indicators: 'sma_20,sma_50,rsi',
+      signal: signalType.toLowerCase(),
+      api_key: CHART_API_KEY
     };
 
-    const queryString = new URLSearchParams({
-      ...chartParams,
-      api_key: CHART_API_KEY
-    }).toString();
+    const queryString = new URLSearchParams(chartParams).toString();
 
     // Real chart URL dengan Chart-img API
     const chartUrl = `https://api.chart-img.com/v1/tradingview/chart?${queryString}`;
@@ -53,10 +51,10 @@ export const getTradingViewChart = (symbol: string, interval: string = '15m'): s
     style: '1',
     locale: 'en',
     toolbar_bg: '#1e293b',
-    enable_publishing: false,
-    hide_top_toolbar: true,
-    hide_legend: true,
-    save_image: false
+    enable_publishing: 'false',
+    hide_top_toolbar: 'true',
+    hide_legend: 'true',
+    save_image: 'false'
   };
   
   const queryString = Object.entries(params)
