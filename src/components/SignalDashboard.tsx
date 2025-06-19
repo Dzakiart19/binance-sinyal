@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,28 +30,70 @@ const SignalDashboard = () => {
   const [activeTrades, setActiveTrades] = useState(tradingManager.getActiveTrades());
   const [modal] = useState(200000);
   const [isRealMode, setIsRealMode] = useState(true);
+  const [errorCount, setErrorCount] = useState(0);
+  const [lastSuccessTime, setLastSuccessTime] = useState(Date.now());
+  
+  // Refs untuk prevent spam
+  const isGeneratingRef = useRef(false);
+  const cooldownRef = useRef(false);
 
   const generateNewRealSignals = async () => {
+    // Prevent spam generation
+    if (isGeneratingRef.current || cooldownRef.current) {
+      console.log('⏳ Generation in progress or in cooldown, skipping...');
+      return;
+    }
+
+    // Error rate limiting - jika terlalu banyak error, tunggu lebih lama
+    if (errorCount >= 3) {
+      const timeSinceLastSuccess = Date.now() - lastSuccessTime;
+      if (timeSinceLastSuccess < 300000) { // 5 menit cooldown setelah 3 error
+        console.log('🚫 Too many errors, waiting 5 minutes...');
+        return;
+      } else {
+        setErrorCount(0); // Reset error count setelah cooldown
+      }
+    }
+
+    isGeneratingRef.current = true;
     setIsLoading(true);
+    
     try {
       console.log('🔄 Mencari sinyal real dari Binance + Groq AI...');
       
-      // Generate 1-2 real signals
+      // Generate 1 real signal
       const realSignal = await generateRealSignal();
       
       if (realSignal) {
         setSignals([realSignal]);
+        setErrorCount(0); // Reset error count on success
+        setLastSuccessTime(Date.now());
         console.log(`✅ Signal real berhasil: ${realSignal.pair} ${realSignal.type}`);
+        
+        // Set cooldown 2 menit setelah berhasil generate
+        cooldownRef.current = true;
+        setTimeout(() => {
+          cooldownRef.current = false;
+        }, 120000); // 2 menit cooldown
       } else {
-        console.log('⚠️ Tidak ada signal optimal saat ini, coba lagi dalam beberapa menit');
+        console.log('⚠️ Tidak ada signal optimal saat ini');
         setSignals([]);
+        setErrorCount(prev => prev + 1);
       }
       
     } catch (error) {
-      console.error('Error generating real signals:', error);
+      console.error('❌ Error generating real signals:', error);
       setSignals([]);
+      setErrorCount(prev => prev + 1);
+      
+      // Set cooldown setelah error
+      cooldownRef.current = true;
+      setTimeout(() => {
+        cooldownRef.current = false;
+      }, 30000); // 30 detik cooldown setelah error
     } finally {
       setIsLoading(false);
+      isGeneratingRef.current = false;
     }
   };
 
@@ -63,41 +106,30 @@ const SignalDashboard = () => {
     console.log(`🚀 Trade dimulai: ${signal.pair} ${signal.type} - siap untuk eksekusi manual di Binance!`);
   };
 
-  // Auto-generate real signals setiap 3 menit
+  // Auto-generate dengan rate limiting yang lebih ketat
   useEffect(() => {
     const autoGenerateSignals = () => {
-      if (signals.length === 0 && !isLoading && isRealMode) {
+      // Hanya generate jika tidak ada signal dan tidak sedang loading
+      if (signals.length === 0 && !isLoading && isRealMode && !isGeneratingRef.current && !cooldownRef.current) {
         generateNewRealSignals();
       }
     };
 
-    // Generate initial signals
-    if (isRealMode) {
-      generateNewRealSignals();
-    }
+    // Generate initial signals setelah 2 detik
+    const initialTimer = setTimeout(() => {
+      if (isRealMode) {
+        generateNewRealSignals();
+      }
+    }, 2000);
 
-    // Set interval untuk auto-generate
-    const interval = setInterval(autoGenerateSignals, 180000); // 3 menit
+    // Set interval untuk auto-generate setiap 5 menit (lebih konservatif)
+    const interval = setInterval(autoGenerateSignals, 300000); // 5 menit
 
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(interval);
+    };
   }, [signals.length, isLoading, isRealMode]);
-
-  // Auto-generate signals setiap 2 menit jika tidak ada sinyal aktif
-  useEffect(() => {
-    const autoGenerateSignals = () => {
-      if (signals.length === 0 && !isLoading) {
-        generateNewRealSignals();
-      }
-    };
-
-    // Generate initial signals
-    autoGenerateSignals();
-
-    // Set interval untuk auto-generate
-    const interval = setInterval(autoGenerateSignals, 120000); // 2 menit
-
-    return () => clearInterval(interval);
-  }, [signals.length, isLoading]);
 
   useEffect(() => {
     // Setup history listener
@@ -131,6 +163,11 @@ const SignalDashboard = () => {
                 Menggunakan data real-time dari Binance API, analisis AI dari Groq, dan chart visualization real. 
                 Sinyal ini untuk eksekusi manual di Binance App. <strong>Selalu DYOR!</strong>
               </p>
+              {errorCount > 0 && (
+                <p className="text-yellow-300 text-xs mt-1">
+                  ⚠️ {errorCount} error detected, system will auto-retry dengan rate limiting
+                </p>
+              )}
             </div>
           </div>
         </CardContent>
@@ -162,11 +199,11 @@ const SignalDashboard = () => {
             </div>
             <Button
               onClick={generateNewRealSignals}
-              disabled={isLoading}
+              disabled={isLoading || isGeneratingRef.current || cooldownRef.current}
               className="bg-green-600 hover:bg-green-700 text-white"
             >
               <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              {isLoading ? 'Analyzing Market...' : 'Refresh Real Data'}
+              {isLoading ? 'Analyzing Market...' : cooldownRef.current ? 'Cooldown...' : 'Refresh Real Data'}
             </Button>
           </div>
 
@@ -212,8 +249,10 @@ const SignalDashboard = () => {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-purple-400 text-sm font-medium">Manual Execute</p>
-                    <p className="text-xl font-bold text-white">Ready</p>
+                    <p className="text-purple-400 text-sm font-medium">System Status</p>
+                    <p className="text-xl font-bold text-white">
+                      {isLoading ? 'Analyzing' : cooldownRef.current ? 'Cooldown' : 'Ready'}
+                    </p>
                   </div>
                   <Clock className="w-6 h-6 text-purple-400" />
                 </div>
@@ -302,10 +341,20 @@ const SignalDashboard = () => {
                 <div className="space-y-4">
                   <Globe className="w-12 h-12 text-green-400 mx-auto animate-pulse" />
                   <div>
-                    <p className="text-gray-400 text-lg font-medium">Scanning Real Market Data...</p>
-                    <p className="text-gray-500 text-sm mt-2">
-                      Sistem sedang menganalisis Binance + Groq AI untuk sinyal optimal
+                    <p className="text-gray-400 text-lg font-medium">
+                      {cooldownRef.current ? 'System Cooldown Active...' : 'Scanning Real Market Data...'}
                     </p>
+                    <p className="text-gray-500 text-sm mt-2">
+                      {cooldownRef.current 
+                        ? 'Tunggu sebentar untuk mencegah spam request ke API'
+                        : 'Sistem sedang menganalisis Binance + Groq AI untuk sinyal optimal'
+                      }
+                    </p>
+                    {errorCount > 0 && (
+                      <p className="text-yellow-400 text-xs mt-2">
+                        {errorCount} error detected - sistem akan retry otomatis
+                      </p>
+                    )}
                   </div>
                 </div>
               </CardContent>
