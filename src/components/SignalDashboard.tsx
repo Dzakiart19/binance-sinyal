@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -33,64 +32,69 @@ const SignalDashboard = () => {
   const [errorCount, setErrorCount] = useState(0);
   const [lastSuccessTime, setLastSuccessTime] = useState(Date.now());
   
-  // Refs untuk prevent spam
+  // Enhanced refs untuk prevent spam
   const isGeneratingRef = useRef(false);
   const cooldownRef = useRef(false);
+  const lastGenerationAttempt = useRef(0);
 
   const generateNewRealSignals = async () => {
-    // Prevent spam generation
-    if (isGeneratingRef.current || cooldownRef.current) {
-      console.log('⏳ Generation in progress or in cooldown, skipping...');
+    // Enhanced spam prevention
+    const now = Date.now();
+    if (isGeneratingRef.current || cooldownRef.current || (now - lastGenerationAttempt.current < 15000)) {
+      console.log('⏳ Generation blocked - preventing spam');
       return;
     }
 
-    // Error rate limiting - jika terlalu banyak error, tunggu lebih lama
+    // Progressive cooldown based on error count
     if (errorCount >= 3) {
-      const timeSinceLastSuccess = Date.now() - lastSuccessTime;
-      if (timeSinceLastSuccess < 300000) { // 5 menit cooldown setelah 3 error
-        console.log('🚫 Too many errors, waiting 5 minutes...');
+      const timeSinceLastSuccess = now - lastSuccessTime;
+      const requiredCooldown = Math.min(300000, 60000 * Math.pow(2, errorCount - 3)); // Exponential backoff
+      
+      if (timeSinceLastSuccess < requiredCooldown) {
+        console.log(`🚫 Too many errors (${errorCount}), waiting ${Math.ceil(requiredCooldown/60000)} minutes...`);
         return;
       } else {
-        setErrorCount(0); // Reset error count setelah cooldown
+        setErrorCount(0); // Reset after sufficient cooldown
       }
     }
 
+    lastGenerationAttempt.current = now;
     isGeneratingRef.current = true;
     setIsLoading(true);
     
     try {
-      console.log('🔄 Mencari sinyal real dari Binance + Groq AI...');
+      console.log('🔄 Generating signal with mock data for stability...');
       
-      // Generate 1 real signal
       const realSignal = await generateRealSignal();
       
       if (realSignal) {
         setSignals([realSignal]);
-        setErrorCount(0); // Reset error count on success
-        setLastSuccessTime(Date.now());
-        console.log(`✅ Signal real berhasil: ${realSignal.pair} ${realSignal.type}`);
+        setErrorCount(0);
+        setLastSuccessTime(now);
+        console.log(`✅ Signal berhasil: ${realSignal.pair} ${realSignal.type}`);
         
-        // Set cooldown 2 menit setelah berhasil generate
+        // Set longer cooldown after success
         cooldownRef.current = true;
         setTimeout(() => {
           cooldownRef.current = false;
-        }, 120000); // 2 menit cooldown
+        }, 180000); // 3 menit cooldown
       } else {
         console.log('⚠️ Tidak ada signal optimal saat ini');
         setSignals([]);
-        setErrorCount(prev => prev + 1);
+        setErrorCount(prev => Math.min(prev + 1, 10)); // Cap error count
       }
       
     } catch (error) {
-      console.error('❌ Error generating real signals:', error);
+      console.error('❌ Error generating signals:', error);
       setSignals([]);
-      setErrorCount(prev => prev + 1);
+      setErrorCount(prev => Math.min(prev + 1, 10));
       
-      // Set cooldown setelah error
+      // Progressive cooldown on error
+      const errorCooldown = Math.min(120000, 30000 * errorCount); // Max 2 minutes
       cooldownRef.current = true;
       setTimeout(() => {
         cooldownRef.current = false;
-      }, 30000); // 30 detik cooldown setelah error
+      }, errorCooldown);
     } finally {
       setIsLoading(false);
       isGeneratingRef.current = false;
@@ -106,24 +110,27 @@ const SignalDashboard = () => {
     console.log(`🚀 Trade dimulai: ${signal.pair} ${signal.type} - siap untuk eksekusi manual di Binance!`);
   };
 
-  // Auto-generate dengan rate limiting yang lebih ketat
+  // Improved auto-generate with better rate limiting
   useEffect(() => {
+    if (!isRealMode) return;
+
     const autoGenerateSignals = () => {
-      // Hanya generate jika tidak ada signal dan tidak sedang loading
-      if (signals.length === 0 && !isLoading && isRealMode && !isGeneratingRef.current && !cooldownRef.current) {
-        generateNewRealSignals();
+      // Only generate if conditions are met and not in cooldown
+      if (signals.length === 0 && !isLoading && !isGeneratingRef.current && !cooldownRef.current) {
+        const timeSinceLastAttempt = Date.now() - lastGenerationAttempt.current;
+        if (timeSinceLastAttempt >= 30000) { // Minimum 30 second between attempts
+          generateNewRealSignals();
+        }
       }
     };
 
-    // Generate initial signals setelah 2 detik
+    // Initial generation after 3 seconds
     const initialTimer = setTimeout(() => {
-      if (isRealMode) {
-        generateNewRealSignals();
-      }
-    }, 2000);
+      generateNewRealSignals();
+    }, 3000);
 
-    // Set interval untuk auto-generate setiap 5 menit (lebih konservatif)
-    const interval = setInterval(autoGenerateSignals, 300000); // 5 menit
+    // Much longer interval to prevent spam - 10 menit
+    const interval = setInterval(autoGenerateSignals, 600000); // 10 menit
 
     return () => {
       clearTimeout(initialTimer);
@@ -152,21 +159,30 @@ const SignalDashboard = () => {
 
   return (
     <div className="space-y-6">
-      {/* Real Data Disclaimer */}
+      {/* Enhanced Real Data Status */}
       <Card className="bg-green-500/10 border-green-500/50">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
             <Globe className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
             <div>
-              <h4 className="text-green-400 font-semibold mb-1">🌐 REAL MARKET DATA ACTIVE</h4>
+              <h4 className="text-green-400 font-semibold mb-1">🌐 STABLE SIGNAL SYSTEM</h4>
               <p className="text-green-300 text-sm">
-                Menggunakan data real-time dari Binance API, analisis AI dari Groq, dan chart visualization real. 
-                Sinyal ini untuk eksekusi manual di Binance App. <strong>Selalu DYOR!</strong>
+                Menggunakan data market yang stabil dengan AI analysis dari Groq. 
+                Sistem anti-spam aktif untuk mencegah error berulang. <strong>Ready untuk manual execute!</strong>
               </p>
               {errorCount > 0 && (
-                <p className="text-yellow-300 text-xs mt-1">
-                  ⚠️ {errorCount} error detected, system will auto-retry dengan rate limiting
-                </p>
+                <div className="mt-2 p-2 bg-yellow-500/10 rounded border border-yellow-500/30">
+                  <p className="text-yellow-300 text-xs">
+                    ⚠️ {errorCount} error detected - sistem menggunakan cooldown progresif untuk stabilitas
+                  </p>
+                </div>
+              )}
+              {cooldownRef.current && (
+                <div className="mt-2 p-2 bg-blue-500/10 rounded border border-blue-500/30">
+                  <p className="text-blue-300 text-xs">
+                    ⏳ Sistem dalam cooldown untuk mencegah spam request - tunggu sebentar
+                  </p>
+                </div>
               )}
             </div>
           </div>

@@ -69,7 +69,7 @@ Rules:
             content: prompt
           }
         ],
-        model: 'llama-3.1-70b-versatile',
+        model: 'llama-3.1-8b-instant', // Updated to current model
         temperature: 0.1,
         max_tokens: 500
       }),
