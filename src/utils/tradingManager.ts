@@ -15,6 +15,91 @@ class TradingManager {
   private history: HistoryRecord[] = [];
   private listeners: ((history: HistoryRecord[]) => void)[] = [];
 
+  constructor() {
+    this.loadFromStorage();
+    this.restoreActiveTrades();
+  }
+
+  private saveToStorage() {
+    try {
+      // Save active trades
+      const activeTradesForStorage = this.activeTrades.map(trade => ({
+        ...trade,
+        startTime: trade.startTime.toISOString(),
+        signal: {
+          ...trade.signal,
+          timestamp: trade.signal.timestamp.toISOString()
+        }
+      }));
+      localStorage.setItem('activeTrades', JSON.stringify(activeTradesForStorage));
+
+      // Save history
+      const historyForStorage = this.history.map(record => ({
+        ...record,
+        entryTime: record.entryTime.toISOString(),
+        exitTime: record.exitTime.toISOString()
+      }));
+      localStorage.setItem('tradingHistory', JSON.stringify(historyForStorage));
+    } catch (error) {
+      console.error('Error saving to localStorage:', error);
+    }
+  }
+
+  private loadFromStorage() {
+    try {
+      // Load active trades
+      const savedActiveTrades = localStorage.getItem('activeTrades');
+      if (savedActiveTrades) {
+        const parsed = JSON.parse(savedActiveTrades);
+        this.activeTrades = parsed.map((trade: any) => ({
+          ...trade,
+          startTime: new Date(trade.startTime),
+          signal: {
+            ...trade.signal,
+            timestamp: new Date(trade.signal.timestamp)
+          }
+        }));
+      }
+
+      // Load history
+      const savedHistory = localStorage.getItem('tradingHistory');
+      if (savedHistory) {
+        const parsed = JSON.parse(savedHistory);
+        this.history = parsed.map((record: any) => ({
+          ...record,
+          entryTime: new Date(record.entryTime),
+          exitTime: new Date(record.exitTime)
+        }));
+      }
+    } catch (error) {
+      console.error('Error loading from localStorage:', error);
+      this.activeTrades = [];
+      this.history = [];
+    }
+  }
+
+  private restoreActiveTrades() {
+    // Restore timers untuk active trades yang ada
+    this.activeTrades.forEach(trade => {
+      const elapsed = Date.now() - trade.startTime.getTime();
+      const duration = 5 + Math.random() * 25; // 5-30 menit
+      const remaining = (duration * 60 * 1000) - elapsed;
+
+      if (remaining > 0) {
+        console.log(`🔄 Restoring trade timer: ${trade.signal.pair} - ${Math.round(remaining/60000)} menit tersisa`);
+        setTimeout(() => {
+          this.completeTrade(trade.id);
+        }, remaining);
+      } else {
+        // Trade sudah seharusnya selesai, complete sekarang
+        console.log(`⏰ Completing overdue trade: ${trade.signal.pair}`);
+        setTimeout(() => {
+          this.completeTrade(trade.id);
+        }, 1000);
+      }
+    });
+  }
+
   addTrade(signal: Signal, modal: number = 200000, timeframe: string = '15m') {
     // Cek apakah trade dengan ID yang sama sudah ada
     const existingTrade = this.activeTrades.find(t => t.id === signal.id);
@@ -32,6 +117,7 @@ class TradingManager {
     };
     
     this.activeTrades.push(trade);
+    this.saveToStorage();
     console.log(`Trade dimulai: ${signal.pair} ${signal.type} dengan modal Rp ${modal.toLocaleString('id-ID')}`);
     
     // Simulasi trade selesai setelah 5-30 menit
@@ -117,6 +203,7 @@ class TradingManager {
 
     this.history.unshift(record); // Add to beginning
     this.activeTrades.splice(tradeIndex, 1);
+    this.saveToStorage();
     
     // Notify listeners
     this.listeners.forEach(listener => listener(this.history));
@@ -140,6 +227,16 @@ class TradingManager {
 
   // Method untuk debugging
   clearAllTrades() {
+    this.activeTrades = [];
+    this.history = [];
+    this.saveToStorage();
+    this.listeners.forEach(listener => listener(this.history));
+  }
+
+  // Method untuk clear localStorage jika diperlukan
+  clearStorage() {
+    localStorage.removeItem('activeTrades');
+    localStorage.removeItem('tradingHistory');
     this.activeTrades = [];
     this.history = [];
     this.listeners.forEach(listener => listener(this.history));
