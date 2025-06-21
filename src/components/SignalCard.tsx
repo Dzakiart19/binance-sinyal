@@ -44,13 +44,12 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, modal = 200000, onStart
       : 'bg-red-500/20 text-red-300 border-red-500/30';
   };
 
-  // Target IDR yang realistis
-  const targetProfitIDR = 10000; // TP2: +10k IDR
-  const tp1ProfitIDR = 5000;     // TP1: +5k IDR
-  const stopLossIDR = 3000;      // SL: -3k IDR
+  // Target IDR yang SANGAT REALISTIS untuk modal 200k
+  const targetProfitIDR = 5000; // TP1: +5k IDR (2.5%)
+  const stopLossIDR = 3000;     // SL: -3k IDR (1.5%)
 
   const calculateRiskReward = () => {
-    return (targetProfitIDR / stopLossIDR).toFixed(1); // 10k/3k = 3.3
+    return (targetProfitIDR / stopLossIDR).toFixed(1); // 5k/3k = 1.7
   };
 
   return (
@@ -84,40 +83,40 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, modal = 200000, onStart
       </CardHeader>
 
       <CardContent className="space-y-6">
-        {/* Chart Image with better fallback */}
+        {/* Chart Image dengan fallback yang lebih baik */}
         <div className="relative">
           <div className="w-full h-40 bg-slate-700 rounded-lg flex items-center justify-center">
             <div className="text-center">
               <TrendingUp className={`w-8 h-8 mx-auto mb-2 ${signal.type === 'BUY' ? 'text-green-400' : 'text-red-400'}`} />
               <p className="text-gray-400 text-sm">Pattern: {signal.type === 'BUY' ? 'Bullish Setup' : 'Bearish Setup'}</p>
-              <p className="text-gray-500 text-xs">Target IDR: TP +10k, SL -3k</p>
+              <p className="text-gray-500 text-xs">Target REALISTIS: TP +5k, SL -3k</p>
             </div>
           </div>
           <div className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded">
-            IDR Target
+            Modal Kecil
           </div>
         </div>
 
-        {/* Realistic IDR Targets */}
-        <div className="bg-blue-500/10 rounded-lg p-4">
-          <h4 className="text-blue-400 font-semibold text-sm mb-3">Target IDR dengan Modal {formatIDR(modal)}</h4>
-          <div className="grid grid-cols-3 gap-3">
+        {/* Target IDR yang SANGAT REALISTIS */}
+        <div className="bg-green-500/10 rounded-lg p-4 border border-green-500/20">
+          <h4 className="text-green-400 font-semibold text-sm mb-3">
+            🎯 Target REALISTIS Modal {formatIDR(modal)}
+          </h4>
+          <div className="grid grid-cols-2 gap-4">
             <div className="text-center">
               <p className="text-green-400 text-xs font-medium">TP1 (2.5%)</p>
-              <p className="text-green-400 font-bold">+{formatIDR(tp1ProfitIDR)}</p>
-            </div>
-            <div className="text-center">
-              <p className="text-green-400 text-xs font-medium">TP2 (5%)</p>
-              <p className="text-green-400 font-bold">+{formatIDR(targetProfitIDR)}</p>
+              <p className="text-green-400 font-bold text-lg">+{formatIDR(targetProfitIDR)}</p>
+              <p className="text-green-300 text-xs">Target Utama</p>
             </div>
             <div className="text-center">
               <p className="text-red-400 text-xs font-medium">SL (1.5%)</p>
-              <p className="text-red-400 font-bold">-{formatIDR(stopLossIDR)}</p>
+              <p className="text-red-400 font-bold text-lg">-{formatIDR(stopLossIDR)}</p>
+              <p className="text-red-300 text-xs">Risk Terkontrol</p>
             </div>
           </div>
-          <div className="mt-3 pt-3 border-t border-blue-500/20">
-            <p className="text-center text-blue-300 text-sm">
-              <strong>Target Utama: TP2 (+{formatIDR(targetProfitIDR)})</strong>
+          <div className="mt-3 pt-3 border-t border-green-500/20">
+            <p className="text-center text-green-300 text-sm">
+              <strong>R/R Ratio: 1:{calculateRiskReward()} • Conservative Trading</strong>
             </p>
           </div>
         </div>
@@ -155,11 +154,11 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, modal = 200000, onStart
           </div>
         </div>
 
-        {/* AI Analysis */}
+        {/* AI Analysis untuk Modal Kecil */}
         <div className="bg-slate-700/30 rounded-lg p-4">
           <h4 className="text-purple-400 font-semibold text-sm mb-2 flex items-center">
             <span className="w-2 h-2 bg-purple-400 rounded-full mr-2"></span>
-            Analisis Groq AI - IDR Targets
+            Analisis AI - Modal Kecil Strategy
           </h4>
           <p className="text-gray-300 text-sm leading-relaxed">
             {signal.analysis}
@@ -173,7 +172,7 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, modal = 200000, onStart
             className="w-full bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white font-semibold py-3"
           >
             <Play className="w-4 h-4 mr-2" />
-            Mulai Trading - Target +{formatIDR(targetProfitIDR)}
+            Start Trading - Target +{formatIDR(targetProfitIDR)}
           </Button>
         )}
       </CardContent>

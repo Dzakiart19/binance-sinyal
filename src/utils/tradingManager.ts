@@ -28,25 +28,25 @@ class TradingManager {
   }
 
   private startRealTimePriceUpdates() {
-    // Update harga dan P&L setiap 5 detik untuk real-time experience
+    // Update harga dan P&L setiap 3 detik untuk real-time experience
     this.priceUpdateInterval = setInterval(() => {
       this.updateRealTimePnL();
-    }, 5000);
+    }, 3000);
   }
 
   private updateRealTimePnL() {
     if (this.activeTrades.length === 0) return;
 
     this.activeTrades.forEach(trade => {
-      // Simulasi pergerakan harga yang lebih halus dan realistis
-      const volatility = 0.001; // 0.1% volatility per update (lebih halus)
-      const trend = Math.sin(Date.now() / 50000) * 0.0005; // Small trend component
+      // Simulasi pergerakan harga yang SANGAT HALUS untuk modal kecil
+      const volatility = 0.0002; // 0.02% volatility per update (sangat halus)
+      const trend = Math.sin(Date.now() / 100000) * 0.0001; // Very small trend
       const randomChange = (Math.random() - 0.5) * volatility;
       
       const priceChange = trend + randomChange;
       const currentPrice = trade.signal.entryPrice * (1 + priceChange);
       
-      // Hitung unrealized P&L berdasarkan target IDR yang realistis
+      // Hitung unrealized P&L berdasarkan target IDR yang SANGAT REALISTIS
       let unrealizedProfit: number;
       let percentageChange: number;
       
@@ -56,14 +56,16 @@ class TradingManager {
         percentageChange = (trade.signal.entryPrice - currentPrice) / trade.signal.entryPrice;
       }
       
-      // Konversi ke IDR berdasarkan percentage change
-      unrealizedProfit = percentageChange * trade.modal;
+      // Konversi ke IDR dengan skala yang REALISTIS untuk modal 200k
+      // Maksimal pergerakan 0.5% = 1000 IDR, sehingga pergerakan gradual
+      const maxMoveIDR = 1000; // Maksimal 1000 IDR per update
+      unrealizedProfit = Math.max(Math.min(percentageChange * trade.modal, maxMoveIDR), -maxMoveIDR);
 
       trade.currentPrice = currentPrice;
       trade.unrealizedProfit = unrealizedProfit;
       trade.currentPnL = (unrealizedProfit / trade.modal) * 100;
 
-      // Auto-close trade jika mencapai TP atau SL dengan threshold IDR
+      // Auto-close trade jika mencapai TP atau SL yang REALISTIS
       const shouldClose = this.checkAutoCloseIDR(trade, unrealizedProfit);
       if (shouldClose) {
         this.completeTrade(trade.id, currentPrice, shouldClose);
@@ -75,18 +77,22 @@ class TradingManager {
   }
 
   private checkAutoCloseIDR(trade: ActiveTrade, unrealizedProfit: number): 'TP' | 'SL' | null {
-    // TP: +10k IDR (5%), SL: -3k IDR (1.5%)
-    if (unrealizedProfit >= 10000) return 'TP'; // Target profit 10k
-    if (unrealizedProfit <= -3000) return 'SL';  // Stop loss 3k
+    // Target REALISTIS: TP +5k IDR (2.5%), SL -3k IDR (1.5%)
+    if (unrealizedProfit >= 5000) return 'TP'; // TP1: 5k IDR
+    if (unrealizedProfit <= -3000) return 'SL'; // SL: 3k IDR
     return null;
   }
 
   private saveToStorage() {
     try {
-      // Save current balance
-      localStorage.setItem('currentBalance', this.currentBalance.toString());
+      // Save dengan key yang lebih spesifik
+      const timestamp = new Date().toISOString();
       
-      // Save active trades
+      // Save current balance
+      localStorage.setItem('tradingBalance', this.currentBalance.toString());
+      localStorage.setItem('lastSaveTime', timestamp);
+      
+      // Save active trades dengan format yang benar
       const activeTradesForStorage = this.activeTrades.map(trade => ({
         ...trade,
         startTime: trade.startTime.toISOString(),
@@ -95,30 +101,32 @@ class TradingManager {
           timestamp: trade.signal.timestamp.toISOString()
         }
       }));
-      localStorage.setItem('activeTrades', JSON.stringify(activeTradesForStorage));
+      localStorage.setItem('activeTradesData', JSON.stringify(activeTradesForStorage));
 
-      // Save history
+      // Save history dengan format yang benar
       const historyForStorage = this.history.map(record => ({
         ...record,
         entryTime: record.entryTime.toISOString(),
         exitTime: record.exitTime.toISOString()
       }));
-      localStorage.setItem('tradingHistory', JSON.stringify(historyForStorage));
+      localStorage.setItem('tradingHistoryData', JSON.stringify(historyForStorage));
+      
+      console.log(`💾 Data saved - Balance: ${this.currentBalance}, Active: ${this.activeTrades.length}, History: ${this.history.length}`);
     } catch (error) {
-      console.error('Error saving to localStorage:', error);
+      console.error('❌ Error saving to localStorage:', error);
     }
   }
 
   private loadFromStorage() {
     try {
       // Load balance
-      const savedBalance = localStorage.getItem('currentBalance');
+      const savedBalance = localStorage.getItem('tradingBalance');
       if (savedBalance) {
         this.currentBalance = parseFloat(savedBalance);
       }
 
-      // Load active trades
-      const savedActiveTrades = localStorage.getItem('activeTrades');
+      // Load active trades dengan validasi
+      const savedActiveTrades = localStorage.getItem('activeTradesData');
       if (savedActiveTrades) {
         const parsed = JSON.parse(savedActiveTrades);
         this.activeTrades = parsed.map((trade: any) => ({
@@ -131,8 +139,8 @@ class TradingManager {
         }));
       }
 
-      // Load history
-      const savedHistory = localStorage.getItem('tradingHistory');
+      // Load history dengan validasi
+      const savedHistory = localStorage.getItem('tradingHistoryData');
       if (savedHistory) {
         const parsed = JSON.parse(savedHistory);
         this.history = parsed.map((record: any) => ({
@@ -141,8 +149,10 @@ class TradingManager {
           exitTime: new Date(record.exitTime)
         }));
       }
+      
+      console.log(`📥 Data loaded - Balance: ${this.currentBalance}, Active: ${this.activeTrades.length}, History: ${this.history.length}`);
     } catch (error) {
-      console.error('Error loading from localStorage:', error);
+      console.error('❌ Error loading from localStorage:', error);
       this.activeTrades = [];
       this.history = [];
       this.currentBalance = 200000;
@@ -153,16 +163,16 @@ class TradingManager {
     // Restore timers untuk active trades yang ada
     this.activeTrades.forEach(trade => {
       const elapsed = Date.now() - trade.startTime.getTime();
-      const duration = 3 + Math.random() * 12; // 3-15 menit
+      const duration = 2 + Math.random() * 8; // 2-10 menit untuk testing
       const remaining = (duration * 60 * 1000) - elapsed;
 
       if (remaining > 0) {
-        console.log(`🔄 Restoring trade timer: ${trade.signal.pair} - ${Math.round(remaining/60000)} menit tersisa`);
+        console.log(`🔄 Restoring trade: ${trade.signal.pair} - ${Math.round(remaining/60000)} min remaining`);
         setTimeout(() => {
           this.completeTrade(trade.id);
         }, remaining);
       } else {
-        // Trade sudah seharusnya selesai, complete sekarang
+        // Trade sudah seharusnya selesai
         console.log(`⏰ Completing overdue trade: ${trade.signal.pair}`);
         setTimeout(() => {
           this.completeTrade(trade.id);
@@ -172,16 +182,16 @@ class TradingManager {
   }
 
   addTrade(signal: Signal, modal: number = 200000, timeframe: string = '15m') {
-    // Cek apakah ada cukup balance
+    // Cek balance yang cukup
     if (this.currentBalance < modal) {
-      console.log(`Balance tidak cukup. Current: Rp ${this.currentBalance.toLocaleString('id-ID')}, Required: Rp ${modal.toLocaleString('id-ID')}`);
+      console.log(`❌ Balance tidak cukup. Current: Rp ${this.currentBalance.toLocaleString('id-ID')}, Required: Rp ${modal.toLocaleString('id-ID')}`);
       return;
     }
 
-    // Cek apakah trade dengan ID yang sama sudah ada
+    // Cek duplikasi trade
     const existingTrade = this.activeTrades.find(t => t.id === signal.id);
     if (existingTrade) {
-      console.log(`Trade dengan ID ${signal.id} sudah ada, tidak menambahkan duplikat`);
+      console.log(`⚠️ Trade ${signal.id} sudah ada`);
       return;
     }
 
@@ -196,16 +206,17 @@ class TradingManager {
       currentPnL: 0
     };
     
-    // Kurangi balance dengan modal yang digunakan
+    // Kurangi balance
     this.currentBalance -= modal;
     
     this.activeTrades.push(trade);
-    this.saveToStorage();
-    console.log(`Trade dimulai: ${signal.pair} ${signal.type} dengan modal Rp ${modal.toLocaleString('id-ID')}`);
-    console.log(`Balance tersisa: Rp ${this.currentBalance.toLocaleString('id-ID')}`);
+    this.saveToStorage(); // Save immediately
     
-    // Simulasi trade selesai setelah 3-15 menit (lebih cepat untuk testing)
-    const duration = 3 + Math.random() * 12; // 3-15 menit
+    console.log(`🚀 Trade started: ${signal.pair} ${signal.type} - Modal: Rp ${modal.toLocaleString('id-ID')}`);
+    console.log(`💰 Balance: Rp ${this.currentBalance.toLocaleString('id-ID')}`);
+    
+    // Trade duration 2-10 menit untuk testing cepat
+    const duration = 2 + Math.random() * 8;
     setTimeout(() => {
       this.completeTrade(trade.id);
     }, duration * 60 * 1000);
@@ -217,67 +228,63 @@ class TradingManager {
   private completeTrade(tradeId: string, exitPrice?: number, status?: 'TP' | 'SL') {
     const tradeIndex = this.activeTrades.findIndex(t => t.id === tradeId);
     if (tradeIndex === -1) {
-      console.log(`Trade dengan ID ${tradeId} tidak ditemukan`);
+      console.log(`❌ Trade ${tradeId} not found`);
       return;
     }
 
     const trade = this.activeTrades[tradeIndex];
     const { signal, modal, startTime, timeframe } = trade;
 
-    // Tentukan hasil berdasarkan target IDR yang realistis
+    // Tentukan hasil dengan target IDR REALISTIS
     let profit: number;
     let finalStatus: 'TP' | 'SL';
     
     if (status) {
       finalStatus = status;
       if (status === 'TP') {
-        profit = 10000; // Target profit 10k IDR
+        profit = 5000; // TP1: 5k IDR (realistis)
       } else {
-        profit = -3000; // Stop loss 3k IDR
+        profit = -3000; // SL: 3k IDR
       }
     } else {
-      // Simulasi hasil dengan probabilitas 65% win
-      const isWin = Math.random() > 0.35;
+      // 70% win rate dengan profit yang REALISTIS
+      const isWin = Math.random() > 0.3;
       if (isWin) {
         finalStatus = 'TP';
-        profit = 10000; // Target profit 10k IDR
+        profit = 5000; // 5k IDR profit
       } else {
         finalStatus = 'SL';
-        profit = -3000; // Stop loss 3k IDR
+        profit = -3000; // 3k IDR loss
       }
     }
     
     // Update balance dengan hasil trade
-    this.currentBalance += modal + profit; // Return modal + profit/loss
+    this.currentBalance += modal + profit;
     
     const percentage = (profit / modal) * 100;
     const finalExitPrice = exitPrice || (finalStatus === 'TP' ? signal.targetPrice : signal.stopLoss);
 
-    // Buat alasan yang realistis untuk target IDR
+    // Reason yang realistis untuk modal kecil
     const reasons = {
       TP_BUY: [
-        `🎯 Target profit Rp 10.000 tercapai! Breakout bullish dengan volume confirmation yang kuat. Profit diambil sesuai target 5% dalam ${Math.round((new Date().getTime() - startTime.getTime()) / 60000)} menit.`,
-        `✅ TP1 Rp 5.000 dilewati, TP2 Rp 10.000 tercapai dengan momentum yang sustainable. RSI masih dalam zona sehat, risk management berjalan sempurna.`,
-        `🚀 Bullish momentum terkonfirmasi dengan penembusan resistance. Target Rp 10.000 profit tercapai lebih cepat dari proyeksi, excellent timing!`,
-        `💰 Pattern completion dengan target profit Rp 10.000. Buyer pressure konsisten menghasilkan return 5% sesuai strategi trading plan.`
+        `🎯 Target TP1 Rp 5.000 tercapai! Breakout dengan volume bagus, profit 2.5% dalam ${Math.round((new Date().getTime() - startTime.getTime()) / 60000)} menit.`,
+        `✅ Momentum bullish sustainable, target Rp 5.000 tercapai sesuai plan. Modal kecil dikelola dengan baik.`,
+        `💰 Pattern completion berhasil, profit Rp 5.000 (2.5%) tercapai dengan risk management yang tepat.`
       ],
       TP_SELL: [
-        `🎯 Target profit Rp 10.000 tercapai! Breakdown bearish dengan volume seller yang dominan. Profit diambil sesuai target 5% dalam ${Math.round((new Date().getTime() - startTime.getTime()) / 60000)} menit.`,
-        `✅ TP1 Rp 5.000 dilewati, TP2 Rp 10.000 tercapai dengan correction yang sehat. Momentum bearish sustainable, risk management optimal.`,
-        `📉 Bearish pattern completion dengan target decline Rp 10.000. Seller pressure konsisten menghasilkan profit sesuai proyeksi.`,
-        `💰 Strong rejection dari resistance dengan follow-through yang excellent. Target Rp 10.000 tercapai dengan timing yang sempurna.`
+        `🎯 Target TP1 Rp 5.000 tercapai! Breakdown dengan seller pressure, profit 2.5% dalam ${Math.round((new Date().getTime() - startTime.getTime()) / 60000)} menit.`,
+        `📉 Bearish pattern completion, target Rp 5.000 tercapai dengan timing yang tepat untuk modal kecil.`,
+        `💰 Strong rejection berhasil, profit Rp 5.000 (2.5%) sesuai target conservative trading.`
       ],
       SL_BUY: [
-        `⛔ Stop loss Rp 3.000 triggered karena false breakout. Market menunjukkan rejection yang tidak diharapkan, cut loss dilakukan untuk preserve capital.`,
-        `📊 Bearish reversal dengan institutional selling pressure. SL Rp 3.000 dijalankan sesuai risk management protocol untuk protect modal.`,
-        `⚠️ Support level tidak hold, market structure berubah bearish. Cut loss Rp 3.000 dilakukan untuk mencari setup yang lebih baik.`,
-        `🛡️ Risk management activated: SL Rp 3.000. Unexpected news sentiment mengubah momentum, discipline trading dijaga dengan ketat.`
+        `⛔ Stop loss Rp 3.000 hit - false breakout terdeteksi. Risk management berjalan dengan baik untuk modal kecil.`,
+        `📊 Market reversal tidak terduga, SL Rp 3.000 (1.5%) executed untuk protect capital.`,
+        `⚠️ Support level tidak hold, cut loss Rp 3.000 dilakukan sesuai discipline trading.`
       ],
       SL_SELL: [
-        `⛔ Stop loss Rp 3.000 hit karena unexpected bullish reversal. Strong buying pressure dari institutional players memaksa cover position.`,
-        `📈 Bullish momentum melebihi proyeksi dengan volume buyer yang eksplosif. SL Rp 3.000 dijalankan sesuai trading discipline.`,
-        `⚠️ Support level ternyata lebih kuat dengan massive buying wall. Exit Rp 3.000 loss dilakukan untuk proper risk management.`,
-        `🛡️ Market rebound sustainable dengan whale accumulation detected. Stop loss Rp 3.000 dijalankan untuk preserve capital.`
+        `⛔ Stop loss Rp 3.000 hit - bullish reversal kuat. Discipline trading terjaga untuk modal kecil.`,
+        `📈 Unexpected buying pressure, SL Rp 3.000 (1.5%) executed sesuai risk management.`,
+        `⚠️ Support level ternyata kuat, exit Rp 3.000 loss untuk preserve capital.`
       ]
     };
 
@@ -301,31 +308,25 @@ class TradingManager {
       status: finalStatus
     };
 
-    console.log(`Trade selesai: ${signal.pair} ${finalStatus} - ${finalStatus === 'TP' ? 'Profit' : 'Loss'}: Rp ${profit.toLocaleString('id-ID')}`);
-    console.log(`Balance baru: Rp ${this.currentBalance.toLocaleString('id-ID')}`);
+    console.log(`🏁 Trade completed: ${signal.pair} ${finalStatus} - ${finalStatus === 'TP' ? 'Profit' : 'Loss'}: Rp ${profit.toLocaleString('id-ID')}`);
+    console.log(`💰 New balance: Rp ${this.currentBalance.toLocaleString('id-ID')}`);
 
-    this.history.unshift(record); // Add to beginning
+    this.history.unshift(record);
     this.activeTrades.splice(tradeIndex, 1);
-    this.saveToStorage();
+    this.saveToStorage(); // Save immediately after completion
     
     // Notify listeners
     this.listeners.forEach(listener => listener(this.history));
     this.notifyActiveTradeListeners();
     this.notifyBalanceListeners();
 
-    // Auto-generate new signal after trade completion
+    // Generate new signal after completion
     setTimeout(() => {
       this.requestNewSignal();
-    }, 2000);
-  }
-
-  private simulateExitPrice(signal: Signal): number {
-    const isWin = Math.random() > 0.35;
-    return isWin ? signal.targetPrice : signal.stopLoss;
+    }, 3000);
   }
 
   private requestNewSignal() {
-    // Emit event untuk request sinyal baru
     window.dispatchEvent(new CustomEvent('requestNewSignal'));
   }
 
@@ -370,13 +371,13 @@ class TradingManager {
   }
 
   getActiveTrades(): ActiveTrade[] {
-    return [...this.activeTrades]; // Return copy to prevent external modification
+    return [...this.activeTrades];
   }
 
   clearAllTrades() {
     this.activeTrades = [];
     this.history = [];
-    this.currentBalance = 200000; // Reset balance
+    this.currentBalance = 200000;
     this.saveToStorage();
     this.listeners.forEach(listener => listener(this.history));
     this.notifyActiveTradeListeners();
@@ -384,9 +385,10 @@ class TradingManager {
   }
 
   clearStorage() {
-    localStorage.removeItem('activeTrades');
-    localStorage.removeItem('tradingHistory');
-    localStorage.removeItem('currentBalance');
+    localStorage.removeItem('activeTradesData');
+    localStorage.removeItem('tradingHistoryData');
+    localStorage.removeItem('tradingBalance');
+    localStorage.removeItem('lastSaveTime');
     this.activeTrades = [];
     this.history = [];
     this.currentBalance = 200000;
