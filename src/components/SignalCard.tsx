@@ -44,29 +44,13 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, modal = 200000, onStart
       : 'bg-red-500/20 text-red-300 border-red-500/30';
   };
 
-  const calculateProfitPotential = () => {
-    const potential = signal.type === 'BUY' 
-      ? ((signal.targetPrice - signal.entryPrice) / signal.entryPrice) * 100
-      : ((signal.entryPrice - signal.targetPrice) / signal.entryPrice) * 100;
-    return potential.toFixed(2);
-  };
-
-  const calculateProfitIDR = () => {
-    const potentialPercent = parseFloat(calculateProfitPotential());
-    return (modal * potentialPercent) / 100;
-  };
+  // Target IDR yang realistis
+  const targetProfitIDR = 10000; // TP2: +10k IDR
+  const tp1ProfitIDR = 5000;     // TP1: +5k IDR
+  const stopLossIDR = 3000;      // SL: -3k IDR
 
   const calculateRiskReward = () => {
-    const profitDistance = signal.type === 'BUY' 
-      ? signal.targetPrice - signal.entryPrice
-      : signal.entryPrice - signal.targetPrice;
-    
-    const lossDistance = signal.type === 'BUY'
-      ? signal.entryPrice - signal.stopLoss
-      : signal.stopLoss - signal.entryPrice;
-    
-    const ratio = profitDistance / lossDistance;
-    return ratio.toFixed(1);
+    return (targetProfitIDR / stopLossIDR).toFixed(1); // 10k/3k = 3.3
   };
 
   return (
@@ -105,29 +89,36 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, modal = 200000, onStart
           <div className="w-full h-40 bg-slate-700 rounded-lg flex items-center justify-center">
             <div className="text-center">
               <TrendingUp className={`w-8 h-8 mx-auto mb-2 ${signal.type === 'BUY' ? 'text-green-400' : 'text-red-400'}`} />
-              <p className="text-gray-400 text-sm">Chart Pattern: {signal.type === 'BUY' ? 'Bullish Setup' : 'Bearish Setup'}</p>
-              <p className="text-gray-500 text-xs">15m Timeframe</p>
+              <p className="text-gray-400 text-sm">Pattern: {signal.type === 'BUY' ? 'Bullish Setup' : 'Bearish Setup'}</p>
+              <p className="text-gray-500 text-xs">Target IDR: TP +10k, SL -3k</p>
             </div>
           </div>
           <div className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded">
-            Live Analysis
+            IDR Target
           </div>
         </div>
 
-        {/* Modal & Profit Information */}
+        {/* Realistic IDR Targets */}
         <div className="bg-blue-500/10 rounded-lg p-4">
-          <h4 className="text-blue-400 font-semibold text-sm mb-3">Proyeksi dengan Modal {formatIDR(modal)}</h4>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-gray-400 text-xs">Potensi Profit</p>
-              <p className="text-green-400 font-bold">+{formatIDR(calculateProfitIDR())}</p>
-              <p className="text-green-400 text-sm">+{calculateProfitPotential()}%</p>
+          <h4 className="text-blue-400 font-semibold text-sm mb-3">Target IDR dengan Modal {formatIDR(modal)}</h4>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="text-center">
+              <p className="text-green-400 text-xs font-medium">TP1 (2.5%)</p>
+              <p className="text-green-400 font-bold">+{formatIDR(tp1ProfitIDR)}</p>
             </div>
-            <div>
-              <p className="text-gray-400 text-xs">Max Risk</p>
-              <p className="text-red-400 font-bold">-{formatIDR(Math.abs(calculateProfitIDR() / parseFloat(calculateRiskReward())))}</p>
-              <p className="text-red-400 text-sm">-{(parseFloat(calculateProfitPotential()) / parseFloat(calculateRiskReward())).toFixed(2)}%</p>
+            <div className="text-center">
+              <p className="text-green-400 text-xs font-medium">TP2 (5%)</p>
+              <p className="text-green-400 font-bold">+{formatIDR(targetProfitIDR)}</p>
             </div>
+            <div className="text-center">
+              <p className="text-red-400 text-xs font-medium">SL (1.5%)</p>
+              <p className="text-red-400 font-bold">-{formatIDR(stopLossIDR)}</p>
+            </div>
+          </div>
+          <div className="mt-3 pt-3 border-t border-blue-500/20">
+            <p className="text-center text-blue-300 text-sm">
+              <strong>Target Utama: TP2 (+{formatIDR(targetProfitIDR)})</strong>
+            </p>
           </div>
         </div>
 
@@ -168,7 +159,7 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, modal = 200000, onStart
         <div className="bg-slate-700/30 rounded-lg p-4">
           <h4 className="text-purple-400 font-semibold text-sm mb-2 flex items-center">
             <span className="w-2 h-2 bg-purple-400 rounded-full mr-2"></span>
-            Analisis Groq AI
+            Analisis Groq AI - IDR Targets
           </h4>
           <p className="text-gray-300 text-sm leading-relaxed">
             {signal.analysis}
@@ -182,7 +173,7 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, modal = 200000, onStart
             className="w-full bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white font-semibold py-3"
           >
             <Play className="w-4 h-4 mr-2" />
-            Mulai Trading dengan {formatIDR(modal)}
+            Mulai Trading - Target +{formatIDR(targetProfitIDR)}
           </Button>
         )}
       </CardContent>

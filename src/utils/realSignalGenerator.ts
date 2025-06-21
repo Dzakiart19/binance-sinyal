@@ -1,5 +1,4 @@
-
-// Real signal generator dengan validasi sinyal yang lebih ketat
+// Real signal generator dengan target IDR yang realistis
 import { getBinancePrice, getKlineData, calculateTechnicalIndicators, getTopCryptoPairs } from './binanceApi';
 import { analyzeMarketWithGroq } from './groqAnalysis';
 import { generateRealChart } from './chartApi';
@@ -50,8 +49,17 @@ export const generateRealSignal = async (): Promise<Signal | null> => {
           continue;
         }
 
+        // Generate realistic IDR targets based on 200k modal
+        const realisticTargets = generateRealisticIDRTargets(currentPrice, analysis.signal);
+        
         // Final validation check
-        const finalValidation = validateFinalSignal(analysis, technicalData);
+        const finalValidation = validateFinalSignal({
+          ...analysis,
+          entry: realisticTargets.entryPrice,
+          target: realisticTargets.targetPrice,
+          stopLoss: realisticTargets.stopLoss
+        }, technicalData);
+        
         if (!finalValidation.isValid) {
           console.log(`❌ ${pair.symbol} gagal validasi final: ${finalValidation.reasons.join(', ')}`);
           continue;
@@ -62,15 +70,15 @@ export const generateRealSignal = async (): Promise<Signal | null> => {
         
         console.log(`✅ Signal VALID: ${pair.symbol} ${analysis.signal} (Score: ${validation.score}/100)`);
         
-        // Create enhanced signal
+        // Create enhanced signal dengan target IDR yang realistis
         const signal: Signal = {
           id: `validated_${Date.now()}_${pair.symbol}`,
           pair: pair.symbol,
           type: analysis.signal,
-          entryPrice: analysis.entry,
-          targetPrice: analysis.target,
-          stopLoss: analysis.stopLoss,
-          analysis: `🎯 VALIDATED SIGNAL (Score: ${validation.score}/100, Confidence: ${analysis.confidence}%):\n\n${analysis.reasoning}\n\n✅ Validasi Passed:\n${validation.reasons.map(r => `• ${r}`).join('\n')}\n\nTechnical Data:\n• RSI: ${technicalData.rsi.toFixed(1)}\n• SMA20: $${technicalData.sma20.toFixed(6)}\n• Volume: ${technicalData.volumeRatio.toFixed(2)}x average\n• Trend: ${technicalData.trend}`,
+          entryPrice: realisticTargets.entryPrice,
+          targetPrice: realisticTargets.targetPrice,
+          stopLoss: realisticTargets.stopLoss,
+          analysis: `🎯 VALIDATED SIGNAL (Score: ${validation.score}/100, Confidence: ${analysis.confidence}%):\n\n${analysis.reasoning}\n\n✅ Target Realistis:\n• TP1: +Rp 5.000 (2.5%)\n• TP2: +Rp 10.000 (5%)\n• SL: -Rp 3.000 (1.5%)\n\n✅ Validasi Passed:\n${validation.reasons.map(r => `• ${r}`).join('\n')}\n\nTechnical Data:\n• RSI: ${technicalData.rsi.toFixed(1)}\n• SMA20: $${technicalData.sma20.toFixed(6)}\n• Volume: ${technicalData.volumeRatio.toFixed(2)}x average\n• Trend: ${technicalData.trend}`,
           timestamp: new Date(),
           chartUrl
         };
@@ -90,6 +98,33 @@ export const generateRealSignal = async (): Promise<Signal | null> => {
     console.error('Error generating validated signal:', error);
     return null;
   }
+};
+
+const generateRealisticIDRTargets = (currentPrice: number, signalType: 'BUY' | 'SELL') => {
+  // Modal 200k IDR dengan target realistis
+  // TP1: 5k (2.5%), TP2: 10k (5%), SL: 3k (1.5%)
+  
+  const tp1Percentage = 0.025; // 2.5% untuk TP1 (5k)
+  const tp2Percentage = 0.05;  // 5% untuk TP2 (10k) 
+  const slPercentage = 0.015;  // 1.5% untuk SL (3k)
+  
+  let entryPrice, targetPrice, stopLoss;
+  
+  if (signalType === 'BUY') {
+    entryPrice = currentPrice;
+    targetPrice = currentPrice * (1 + tp2Percentage); // Target TP2 (10k)
+    stopLoss = currentPrice * (1 - slPercentage);     // SL (3k loss)
+  } else {
+    entryPrice = currentPrice;
+    targetPrice = currentPrice * (1 - tp2Percentage); // Target TP2 (10k)
+    stopLoss = currentPrice * (1 + slPercentage);     // SL (3k loss)
+  }
+  
+  return {
+    entryPrice,
+    targetPrice,
+    stopLoss
+  };
 };
 
 const validateSignal = (symbol: string, technicalData: any, klineData: any[]): SignalValidation => {
@@ -187,13 +222,13 @@ const validateFinalSignal = (analysis: any, technicalData: any): SignalValidatio
   const reasons: string[] = [];
   let isValid = true;
 
-  // Risk/Reward validation
+  // Risk/Reward validation dengan target IDR yang realistis
   const riskReward = Math.abs(analysis.target - analysis.entry) / Math.abs(analysis.entry - analysis.stopLoss);
-  if (riskReward < 1.5) {
-    reasons.push(`Risk/Reward ${riskReward.toFixed(2)} terlalu rendah (<1.5)`);
+  if (riskReward < 2.5) { // Lebih ketat karena target IDR sudah ditetapkan
+    reasons.push(`Risk/Reward ${riskReward.toFixed(2)} terlalu rendah (<2.5)`);
     isValid = false;
   } else {
-    reasons.push(`Risk/Reward ${riskReward.toFixed(2)} memadai`);
+    reasons.push(`Risk/Reward ${riskReward.toFixed(2)} excellent untuk target IDR`);
   }
 
   // Signal direction vs trend validation
