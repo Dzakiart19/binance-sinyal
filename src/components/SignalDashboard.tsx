@@ -1,13 +1,14 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, TrendingUp, TrendingDown, Clock, DollarSign, History, AlertTriangle, Zap, Globe } from "lucide-react";
+import { RefreshCw, TrendingUp, TrendingDown, Clock, DollarSign, History, AlertTriangle, Zap, Globe, Target } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import SignalCard from "./SignalCard";
 import TradingHistory from "./TradingHistory";
 import { generateRealSignal } from "@/utils/realSignalGenerator";
-import { tradingManager } from "@/utils/tradingManager";
+import { tradingManager, ActiveTrade } from "@/utils/tradingManager";
 import { HistoryRecord } from "./TradingHistory";
 
 export interface Signal {
@@ -26,7 +27,7 @@ const SignalDashboard = () => {
   const [signals, setSignals] = useState<Signal[]>([]);
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [activeTrades, setActiveTrades] = useState(tradingManager.getActiveTrades());
+  const [activeTrades, setActiveTrades] = useState<ActiveTrade[]>(tradingManager.getActiveTrades());
   const [modal] = useState(200000);
   const [isRealMode, setIsRealMode] = useState(true);
   const [errorCount, setErrorCount] = useState(0);
@@ -45,25 +46,12 @@ const SignalDashboard = () => {
       return;
     }
 
-    // Progressive cooldown based on error count
-    if (errorCount >= 3) {
-      const timeSinceLastSuccess = now - lastSuccessTime;
-      const requiredCooldown = Math.min(300000, 60000 * Math.pow(2, errorCount - 3)); // Exponential backoff
-      
-      if (timeSinceLastSuccess < requiredCooldown) {
-        console.log(`🚫 Too many errors (${errorCount}), waiting ${Math.ceil(requiredCooldown/60000)} minutes...`);
-        return;
-      } else {
-        setErrorCount(0); // Reset after sufficient cooldown
-      }
-    }
-
     lastGenerationAttempt.current = now;
     isGeneratingRef.current = true;
     setIsLoading(true);
     
     try {
-      console.log('🔄 Generating signal with mock data for stability...');
+      console.log('🎯 Generating validated signal...');
       
       const realSignal = await generateRealSignal();
       
@@ -71,30 +59,28 @@ const SignalDashboard = () => {
         setSignals([realSignal]);
         setErrorCount(0);
         setLastSuccessTime(now);
-        console.log(`✅ Signal berhasil: ${realSignal.pair} ${realSignal.type}`);
+        console.log(`✅ Validated signal: ${realSignal.pair} ${realSignal.type}`);
         
         // Set longer cooldown after success
         cooldownRef.current = true;
         setTimeout(() => {
           cooldownRef.current = false;
-        }, 180000); // 3 menit cooldown
+        }, 120000); // 2 menit cooldown
       } else {
-        console.log('⚠️ Tidak ada signal optimal saat ini');
+        console.log('⚠️ Tidak ada signal yang memenuhi validasi ketat');
         setSignals([]);
-        setErrorCount(prev => Math.min(prev + 1, 10)); // Cap error count
+        setErrorCount(prev => Math.min(prev + 1, 10));
       }
       
     } catch (error) {
-      console.error('❌ Error generating signals:', error);
+      console.error('❌ Error generating validated signals:', error);
       setSignals([]);
       setErrorCount(prev => Math.min(prev + 1, 10));
       
-      // Progressive cooldown on error
-      const errorCooldown = Math.min(120000, 30000 * errorCount); // Max 2 minutes
       cooldownRef.current = true;
       setTimeout(() => {
         cooldownRef.current = false;
-      }, errorCooldown);
+      }, 60000);
     } finally {
       setIsLoading(false);
       isGeneratingRef.current = false;
@@ -104,83 +90,94 @@ const SignalDashboard = () => {
   const handleStartTrade = (signal: Signal) => {
     const timeframe = '15m';
     tradingManager.addTrade(signal, modal, timeframe);
-    setActiveTrades(tradingManager.getActiveTrades());
     setSignals(prev => prev.filter(s => s.id !== signal.id));
     
-    console.log(`🚀 Trade dimulai: ${signal.pair} ${signal.type} - siap untuk eksekusi manual di Binance!`);
+    console.log(`🚀 Trade dimulai: ${signal.pair} ${signal.type} - real-time P&L monitoring aktif!`);
   };
 
-  // Improved auto-generate with better rate limiting
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('id-ID', {
+      style: 'currency',
+      currency: 'IDR',
+      minimumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  // Auto-generate signals
   useEffect(() => {
     if (!isRealMode) return;
 
     const autoGenerateSignals = () => {
-      // Only generate if conditions are met and not in cooldown
-      if (signals.length === 0 && !isLoading && !isGeneratingRef.current && !cooldownRef.current) {
+      if (signals.length === 0 && activeTrades.length === 0 && !isLoading && !isGeneratingRef.current && !cooldownRef.current) {
         const timeSinceLastAttempt = Date.now() - lastGenerationAttempt.current;
-        if (timeSinceLastAttempt >= 30000) { // Minimum 30 second between attempts
+        if (timeSinceLastAttempt >= 30000) {
           generateNewRealSignals();
         }
       }
     };
 
-    // Initial generation after 3 seconds
+    // Initial generation
     const initialTimer = setTimeout(() => {
       generateNewRealSignals();
     }, 3000);
 
-    // Much longer interval to prevent spam - 10 menit
-    const interval = setInterval(autoGenerateSignals, 600000); // 10 menit
+    // Auto-generate interval - 5 menit
+    const interval = setInterval(autoGenerateSignals, 300000);
 
     return () => {
       clearTimeout(initialTimer);
       clearInterval(interval);
     };
-  }, [signals.length, isLoading, isRealMode]);
+  }, [signals.length, activeTrades.length, isLoading, isRealMode]);
+
+  // Listen for auto-signal request
+  useEffect(() => {
+    const handleRequestNewSignal = () => {
+      if (activeTrades.length === 0 && signals.length === 0) {
+        setTimeout(() => {
+          generateNewRealSignals();
+        }, 5000); // Wait 5 seconds after trade completion
+      }
+    };
+
+    window.addEventListener('requestNewSignal', handleRequestNewSignal);
+    return () => window.removeEventListener('requestNewSignal', handleRequestNewSignal);
+  }, [activeTrades.length, signals.length]);
 
   useEffect(() => {
     // Setup history listener
-    const unsubscribe = tradingManager.onHistoryUpdate((newHistory) => {
+    const unsubscribeHistory = tradingManager.onHistoryUpdate((newHistory) => {
       setHistory(newHistory);
-      // Update active trades ketika ada perubahan
-      setActiveTrades(tradingManager.getActiveTrades());
     });
 
-    // Update active trades periodically
-    const tradesInterval = setInterval(() => {
-      setActiveTrades(tradingManager.getActiveTrades());
-    }, 1000);
+    // Setup active trades listener for real-time P&L
+    const unsubscribeActiveTrades = tradingManager.onActiveTradeUpdate((newActiveTrades) => {
+      setActiveTrades(newActiveTrades);
+    });
 
     return () => {
-      unsubscribe();
-      clearInterval(tradesInterval);
+      unsubscribeHistory();
+      unsubscribeActiveTrades();
     };
   }, []);
 
   return (
     <div className="space-y-6">
-      {/* Enhanced Real Data Status */}
+      {/* Enhanced Status */}
       <Card className="bg-green-500/10 border-green-500/50">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
-            <Globe className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
+            <Target className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
             <div>
-              <h4 className="text-green-400 font-semibold mb-1">🌐 STABLE SIGNAL SYSTEM</h4>
+              <h4 className="text-green-400 font-semibold mb-1">🎯 ENHANCED TRADING SYSTEM</h4>
               <p className="text-green-300 text-sm">
-                Menggunakan data market yang stabil dengan AI analysis dari Groq. 
-                Sistem anti-spam aktif untuk mencegah error berulang. <strong>Ready untuk manual execute!</strong>
+                Validasi sinyal ketat: RSI &lt; 70, Volume &gt; 120%, Anti-breakout spam. 
+                <strong>Real-time P&L monitoring aktif!</strong>
               </p>
               {errorCount > 0 && (
                 <div className="mt-2 p-2 bg-yellow-500/10 rounded border border-yellow-500/30">
                   <p className="text-yellow-300 text-xs">
-                    ⚠️ {errorCount} error detected - sistem menggunakan cooldown progresif untuk stabilitas
-                  </p>
-                </div>
-              )}
-              {cooldownRef.current && (
-                <div className="mt-2 p-2 bg-blue-500/10 rounded border border-blue-500/30">
-                  <p className="text-blue-300 text-xs">
-                    ⏳ Sistem dalam cooldown untuk mencegah spam request - tunggu sebentar
+                    ⚠️ {errorCount} error - sistem menggunakan validasi backup
                   </p>
                 </div>
               )}
@@ -192,8 +189,8 @@ const SignalDashboard = () => {
       <Tabs defaultValue="signals" className="w-full">
         <TabsList className="grid w-full grid-cols-2 bg-slate-800/50">
           <TabsTrigger value="signals" className="data-[state=active]:bg-green-600">
-            <Zap className="w-4 h-4 mr-2" />
-            Real Signals ({signals.length})
+            <Target className="w-4 h-4 mr-2" />
+            Validated Signals ({signals.length})
           </TabsTrigger>
           <TabsTrigger value="history" className="data-[state=active]:bg-blue-600">
             <History className="w-4 h-4 mr-2" />
@@ -206,11 +203,11 @@ const SignalDashboard = () => {
           <div className="flex justify-between items-center">
             <div>
               <h3 className="text-2xl font-bold text-white flex items-center gap-2">
-                <Globe className="w-6 h-6 text-green-400" />
-                Real Trading Signals
+                <Target className="w-6 h-6 text-green-400" />
+                Validated Trading Signals
               </h3>
               <p className="text-gray-400">
-                Modal: Rp 200.000 • Real Binance Data • AI Analysis • Manual Execute
+                Modal: Rp 200.000 • Validasi Ketat • Real-time P&L • Auto-Generate
               </p>
             </div>
             <Button
@@ -219,7 +216,7 @@ const SignalDashboard = () => {
               className="bg-green-600 hover:bg-green-700 text-white"
             >
               <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              {isLoading ? 'Analyzing Market...' : cooldownRef.current ? 'Cooldown...' : 'Refresh Real Data'}
+              {isLoading ? 'Validating...' : cooldownRef.current ? 'Cooldown...' : 'Generate Validated Signal'}
             </Button>
           </div>
 
@@ -229,10 +226,10 @@ const SignalDashboard = () => {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-green-400 text-sm font-medium">Data Source</p>
-                    <p className="text-xl font-bold text-white">Real Binance</p>
+                    <p className="text-green-400 text-sm font-medium">Validation</p>
+                    <p className="text-xl font-bold text-white">Enhanced</p>
                   </div>
-                  <Globe className="w-6 h-6 text-green-400" />
+                  <Target className="w-6 h-6 text-green-400" />
                 </div>
               </CardContent>
             </Card>
@@ -241,10 +238,10 @@ const SignalDashboard = () => {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-blue-400 text-sm font-medium">AI Analysis</p>
-                    <p className="text-xl font-bold text-white">Groq Active</p>
+                    <p className="text-blue-400 text-sm font-medium">Real-time P&L</p>
+                    <p className="text-xl font-bold text-white">Active</p>
                   </div>
-                  <Zap className="w-6 h-6 text-blue-400" />
+                  <DollarSign className="w-6 h-6 text-blue-400" />
                 </div>
               </CardContent>
             </Card>
@@ -253,8 +250,8 @@ const SignalDashboard = () => {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-yellow-400 text-sm font-medium">Active Signals</p>
-                    <p className="text-xl font-bold text-white">{signals.length}</p>
+                    <p className="text-yellow-400 text-sm font-medium">Active Trades</p>
+                    <p className="text-xl font-bold text-white">{activeTrades.length}</p>
                   </div>
                   <TrendingUp className="w-6 h-6 text-yellow-400" />
                 </div>
@@ -265,23 +262,23 @@ const SignalDashboard = () => {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-purple-400 text-sm font-medium">System Status</p>
+                    <p className="text-purple-400 text-sm font-medium">Auto-Generate</p>
                     <p className="text-xl font-bold text-white">
-                      {isLoading ? 'Analyzing' : cooldownRef.current ? 'Cooldown' : 'Ready'}
+                      {isLoading ? 'Running' : 'Ready'}
                     </p>
                   </div>
-                  <Clock className="w-6 h-6 text-purple-400" />
+                  <Zap className="w-6 h-6 text-purple-400" />
                 </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* Active Trades - Selalu ditampilkan jika ada */}
+          {/* Real-time Active Trades with P&L */}
           {activeTrades.length > 0 && (
             <div className="space-y-4">
               <h4 className="text-lg font-semibold text-white flex items-center gap-2">
-                <Clock className="w-5 h-5 text-yellow-400" />
-                Trade Sedang Berjalan ({activeTrades.length})
+                <DollarSign className="w-5 h-5 text-yellow-400" />
+                Live Trading - Real-time P&L ({activeTrades.length})
               </h4>
               <div className="grid gap-4">
                 {activeTrades.map((trade) => (
@@ -289,19 +286,31 @@ const SignalDashboard = () => {
                     <CardContent className="p-4">
                       <div className="flex justify-between items-center">
                         <div>
-                          <h5 className="text-white font-bold text-lg">{trade.signal.pair}</h5>
-                          <div className="flex items-center gap-3 mt-1">
+                          <h5 className="text-white font-bold text-lg flex items-center gap-2">
+                            {trade.signal.pair}
                             <Badge className={trade.signal.type === 'BUY' ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}>
                               {trade.signal.type}
                             </Badge>
-                            <span className="text-yellow-400">Entry: ${trade.signal.entryPrice}</span>
-                            <span className="text-gray-400">Modal: Rp {trade.modal.toLocaleString('id-ID')}</span>
+                          </h5>
+                          <div className="flex items-center gap-4 mt-2">
+                            <span className="text-gray-400">Entry: ${trade.signal.entryPrice}</span>
+                            <span className="text-blue-400">Current: ${trade.currentPrice?.toFixed(6) || trade.signal.entryPrice}</span>
+                            <span className="text-gray-400">Modal: {formatCurrency(trade.modal)}</span>
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-yellow-400 font-semibold">🔴 LIVE TRADING</p>
-                          <p className="text-gray-400 text-sm">
-                            Dimulai: {trade.startTime.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta' })} WIB
+                          <div className="flex items-center gap-2 mb-1">
+                            {(trade.unrealizedProfit || 0) >= 0 ? (
+                              <TrendingUp className="w-5 h-5 text-green-400" />
+                            ) : (
+                              <TrendingDown className="w-5 h-5 text-red-400" />
+                            )}
+                            <span className={`text-xl font-bold ${(trade.unrealizedProfit || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {(trade.unrealizedProfit || 0) >= 0 ? '+' : ''}{formatCurrency(trade.unrealizedProfit || 0)}
+                            </span>
+                          </div>
+                          <p className={`text-sm ${(trade.currentPnL || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {(trade.currentPnL || 0) >= 0 ? '+' : ''}{(trade.currentPnL || 0).toFixed(2)}%
                           </p>
                           <p className="text-gray-400 text-xs">
                             Target: ${trade.signal.targetPrice} | SL: ${trade.signal.stopLoss}
@@ -315,7 +324,7 @@ const SignalDashboard = () => {
             </div>
           )}
 
-          {/* Real Signals Grid */}
+          {/* Validated Signals Grid */}
           {isLoading ? (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card className="bg-slate-800/50 border-slate-700 animate-pulse">
@@ -328,7 +337,7 @@ const SignalDashboard = () => {
                       <div className="h-3 bg-slate-700 rounded w-2/3"></div>
                     </div>
                     <div className="text-center text-green-400 text-sm">
-                      🔄 Analyzing Binance + Groq AI...
+                      🎯 Validating signal with enhanced criteria...
                     </div>
                   </div>
                 </CardContent>
@@ -337,8 +346,8 @@ const SignalDashboard = () => {
           ) : signals.length > 0 ? (
             <div className="space-y-4">
               <h4 className="text-lg font-semibold text-white flex items-center gap-2">
-                <Zap className="w-5 h-5 text-green-400" />
-                Real Market Signals - Ready for Manual Execute
+                <Target className="w-5 h-5 text-green-400" />
+                Validated Market Signals - Ready for Execute
               </h4>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {signals.map((signal) => (
@@ -355,22 +364,21 @@ const SignalDashboard = () => {
             <Card className="bg-slate-800/50 border-slate-700">
               <CardContent className="p-12 text-center">
                 <div className="space-y-4">
-                  <Globe className="w-12 h-12 text-green-400 mx-auto animate-pulse" />
+                  <Target className="w-12 h-12 text-green-400 mx-auto animate-pulse" />
                   <div>
                     <p className="text-gray-400 text-lg font-medium">
-                      {cooldownRef.current ? 'System Cooldown Active...' : 'Scanning Real Market Data...'}
+                      {cooldownRef.current ? 'System Cooldown...' : 
+                       activeTrades.length > 0 ? 'Monitoring Active Trades...' : 
+                       'Scanning for Validated Signals...'}
                     </p>
                     <p className="text-gray-500 text-sm mt-2">
                       {cooldownRef.current 
-                        ? 'Tunggu sebentar untuk mencegah spam request ke API'
-                        : 'Sistem sedang menganalisis Binance + Groq AI untuk sinyal optimal'
+                        ? 'Tunggu cooldown untuk mencegah spam'
+                        : activeTrades.length > 0 
+                        ? 'Signal baru akan muncul setelah trade selesai'
+                        : 'Mencari sinyal dengan validasi RSI, volume, dan timing'
                       }
                     </p>
-                    {errorCount > 0 && (
-                      <p className="text-yellow-400 text-xs mt-2">
-                        {errorCount} error detected - sistem akan retry otomatis
-                      </p>
-                    )}
                   </div>
                 </div>
               </CardContent>
